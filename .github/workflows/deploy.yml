@@ -1,0 +1,32 @@
+# Manual, gated deployment. Nothing deploys automatically from a push.
+# Requires: repository secret RAILWAY_TOKEN, and that CI has passed for the commit being deployed.
+name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm'
+        required: true
+      service:
+        description: "Railway service (api, worker-default, worker-browser, worker-render, frontend)"
+        required: true
+        default: api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'deploy' }}
+    environment: production            # add required reviewers to this environment in GitHub settings
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require a green CI run for this commit
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          conclusion=$(gh run list --workflow CI --commit "$GITHUB_SHA" --json conclusion --jq '.[0].conclusion')
+          echo "CI conclusion for $GITHUB_SHA: $conclusion"
+          [ "$conclusion" = "success" ] || { echo "CI has not passed for this commit. Refusing to deploy."; exit 1; }
+      - name: Production preflight on the deployed variable set (non-secret checks only)
+        run: echo "Run scripts/preflight.py against your Railway variables locally or via 'railway run' before deploying."
+      - run: npm install -g @railway/cli
+      - run: railway up --service "${{ github.event.inputs.service }}" --detach
+        env: { RAILWAY_TOKEN: "${{ secrets.RAILWAY_TOKEN }}" }
