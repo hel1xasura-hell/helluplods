@@ -1,0 +1,62 @@
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -42,7 +42,10 @@
+     steps:
+       - uses: actions/checkout@v4
+       - uses: actions/setup-node@v4
+-        with: {node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json}
++        # There is no package-lock.json in this repo yet, so the cache key is built from package.json (which exists).
++        # Once a lockfile is committed (run `npm install` in frontend/ and commit package-lock.json), change this to
++        # `cache-dependency-path: frontend/package-lock.json` and replace `npm install` below with `npm ci`.
++        with: {node-version: 22, cache: npm, cache-dependency-path: frontend/package.json}
+       - run: npm install
+       - run: npm run typecheck
+       - run: npm test
+@@ -56,5 +59,6 @@
+         with: {python-version: "3.12"}
+       - run: pip install playwright pytest
+       - run: playwright install --with-deps chromium
+-      - run: ./scripts/sync_companion.sh && git diff --exit-code desktop/companion/vendor
++      # `sh` instead of ./ : files added through the GitHub web upload lose their executable bit (Permission denied)
++      - run: sh scripts/sync_companion.sh && git diff --exit-code desktop/companion/vendor
+       - run: pytest -q desktop/tests
+--- a/backend/app/media/ffmpeg_render.py
++++ b/backend/app/media/ffmpeg_render.py
+@@ -162,7 +162,7 @@
+           f"x=(w-text_w)/2:y=(h-text_h)/2,fade=t=in:d=0.3,fade=t=out:st={max(seconds - 0.3, 0):.2f}:d=0.3,format=yuv420p")
+     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", f"color=c={_color(st.background)}:s={w}x{h}:r={st.fps}:d={seconds:.3f}",
+-           "-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo",
++           "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+            "-vf", vf, "-t", f"{seconds:.3f}", "-af", f"afade=t=in:d=0.2,afade=t=out:st={max(seconds - 0.3, 0):.2f}:d=0.3",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", str(st.crf), "-pix_fmt", "yuv420p", "-r", str(st.fps),
+            "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-shortest", str(out)]
+--- a/backend/app/services/research.py
++++ b/backend/app/services/research.py
+@@ -4,7 +4,6 @@
+ testing: `tested_hands_on` is only true when a workflow was really exercised (not yet implemented)."""
+ import asyncio
+ import re
+-import time
+ import uuid
+ from collections.abc import Awaitable, Callable
+ from datetime import datetime, timezone
+--- a/frontend/src/pages/ScriptStudio.tsx
++++ b/frontend/src/pages/ScriptStudio.tsx
+@@ -105,7 +105,7 @@
+ 
+ export default function ScriptStudio() {
+   const projects = useProjects();
+-  const [projectId, setProjectId] = useProjectId(projects.data);
++  const [projectId] = useProjectId(projects.data);
+   const [params, setParams] = useSearchParams();
+   const scripts = useApi(() => (projectId ? api.scripts(projectId) : Promise.resolve([])), [projectId]);
+   const recordings = useApi(api.recordings);
+--- a/docs/LOCAL_DEVELOPMENT.md
++++ b/docs/LOCAL_DEVELOPMENT.md
+@@ -6,4 +6,4 @@
+ 5. Tests: `pytest -q` (backend, uses in-memory SQLite) and `npm test` (frontend).
+ 6. Everything in containers: `docker compose up --build`.
+ 7. Companion test (real Chromium): `pip install playwright pytest && playwright install chromium && pytest desktop/tests`.
+-   After editing `backend/app/browser/recorder.py` or `services/ssrf.py`, run `scripts/sync_companion.sh`.
++   After editing `backend/app/browser/recorder.py` or `services/ssrf.py`, run `sh scripts/sync_companion.sh`.
